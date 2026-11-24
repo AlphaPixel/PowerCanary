@@ -46,7 +46,9 @@ typedef struct {
 bool ef_parse_packet(const uint8_t *d, size_t n, ef_packet_t *p);
 
 typedef struct {
-    uint32_t ac_in_mv;
+    uint32_t ac_in_mv; /* holds its last value after AC input is removed */
+    uint32_t ac_in_ma;
+    uint16_t in_watts;
     uint32_t ac_out_mv;
     uint16_t out_watts;
     uint8_t ac_in_hz;

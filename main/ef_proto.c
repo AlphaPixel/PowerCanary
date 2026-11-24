@@ -164,9 +164,11 @@ bool ef_decode_inverter(const uint8_t *payload, size_t n, ef_inverter_t *o)
     if (n < 32) {
         return false;
     }
+    o->in_watts = le16(payload + 9);   /* inputWatts */
     o->out_watts = le16(payload + 11); /* outputWatts */
     o->ac_out_mv = le32(payload + 14); /* invOutVol */
     o->ac_in_mv = le32(payload + 23);  /* acInVol */
+    o->ac_in_ma = le32(payload + 27);  /* acInAmp */
     o->ac_in_hz = payload[31];         /* acInFreq */
     return true;
 }

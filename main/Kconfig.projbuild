@@ -5,9 +5,11 @@ menu "PowerCanary"
         default 50
         range 1 300
         help
-            The power station reports its AC input voltage. At or above this
-            value mains is considered present. The default suits both 120 V
-            and 230 V systems; confirm it with an unplug test.
+            Mains counts as present only when the reported AC input voltage is
+            at or above this value AND input current or power is non-zero.
+            Voltage alone is not trusted: a DELTA 2 Max keeps reporting the
+            last voltage it measured after its AC cord is pulled. The default
+            suits both 120 V and 230 V systems.
 
     config CANARY_DEBOUNCE_S
         int "Seconds AC input must be absent before reporting on battery"

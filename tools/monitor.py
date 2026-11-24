@@ -40,6 +40,7 @@ def main() -> None:
     parser.add_argument("port")
     parser.add_argument("-i", "--interval", type=float, default=5.0, help="seconds between polls (default 5)")
     parser.add_argument("-n", "--count", type=int, default=0, help="stop after this many polls (default: run until Ctrl-C)")
+    parser.add_argument("--poll", nargs="+", metavar="CMD", default=["DBG", "Q1"], help="commands to poll (default: DBG Q1)")
     parser.add_argument("--once", nargs="+", metavar="CMD", help="send these commands once and exit")
     parser.add_argument("--reopen", type=int, metavar="N", help="open and close the port N times, then report")
     args = parser.parse_args()
@@ -69,7 +70,7 @@ def main() -> None:
             return
         polls = 0
         while not args.count or polls < args.count:
-            for command in ("DBG", "Q1"):
+            for command in args.poll:
                 print(f"{stamp()} {command:<4} -> {ask(port, command)}", flush=True)
             polls += 1
             time.sleep(args.interval)

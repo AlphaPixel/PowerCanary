@@ -59,9 +59,17 @@ static int64_t now_ms(void)
 
 static void on_inverter(const ef_inverter_t *inv)
 {
+    const power_sample_t sample = {
+        .ac_in_mv = inv->ac_in_mv,
+        .ac_in_ma = inv->ac_in_ma,
+        .in_watts = inv->in_watts,
+        .ac_out_mv = inv->ac_out_mv,
+        .out_watts = inv->out_watts,
+        .ac_in_hz = inv->ac_in_hz,
+    };
     xSemaphoreTake(s_lock, portMAX_DELAY);
     if (!s_simulating) {
-        power_state_set_ac(&s_state, &CFG, now_ms(), inv->ac_in_mv, inv->ac_out_mv, inv->out_watts, inv->ac_in_hz);
+        power_state_set_ac(&s_state, &CFG, now_ms(), &sample);
     }
     xSemaphoreGive(s_lock);
 }
@@ -93,36 +101,50 @@ static size_t debug_line(char *out, size_t cap)
     int n = snprintf(out, cap,
                      "!fw=" CANARY_VERSION " up=%lld ble=%u/%u adv=%lu seen=%lu enc=%u rssi=%d sessions=%lu"
                      " drops=%lu bad=%lu inv=%lu ems=%lu err=%u/%u"
-                     " ac_in_mv=%lu ac_out_mv=%lu w=%u hz=%u soc=%u ac_age_ms=%lld soc_age_ms=%lld"
-                     " fresh=%d ob=%d lb=%d sim=%d rst=%d usj=%lx\r",
+                     " ac_in_mv=%lu ac_in_ma=%lu in_w=%u ac_out_mv=%lu w=%u hz=%u soc=%u ac_age_ms=%lld"
+                     " soc_age_ms=%lld fresh=%d ac=%d ob=%d lb=%d sim=%d rst=%d usj=%lx\r",
                      (long long)(now / 1000), b.state, b.step, (unsigned long)b.adverts,
                      (unsigned long)b.units_seen, b.encrypt_type, b.rssi, (unsigned long)b.sessions,
                      (unsigned long)b.drops, (unsigned long)b.bad_packets, (unsigned long)b.inverter_packets,
                      (unsigned long)b.ems_packets, b.last_error, b.last_error_detail,
-                     (unsigned long)st.ac_in_mv, (unsigned long)st.ac_out_mv, st.out_watts, st.ac_in_hz, st.soc,
+                     (unsigned long)st.ac.ac_in_mv, (unsigned long)st.ac.ac_in_ma, st.ac.in_watts,
+                     (unsigned long)st.ac.ac_out_mv, st.ac.out_watts, st.ac.ac_in_hz, st.soc,
                      (long long)(st.ac_at_ms < 0 ? -1 : now - st.ac_at_ms),
-                     (long long)(st.soc_at_ms < 0 ? -1 : now - st.soc_at_ms), fresh, v.on_battery, v.low_battery,
-                     s_simulating, (int)esp_reset_reason(), (unsigned long)USB_SERIAL_JTAG.chip_rst.val);
+                     (long long)(st.soc_at_ms < 0 ? -1 : now - st.soc_at_ms), fresh, v.ac_present, v.on_battery,
+                     v.low_battery, s_simulating, (int)esp_reset_reason(), (unsigned long)USB_SERIAL_JTAG.chip_rst.val);
     return (n > 0 && (size_t)n < cap) ? (size_t)n : 0;
 }
 
 #if CONFIG_CANARY_TEST_COMMANDS
-/* SIM <ac_in_mv> <soc> injects one sample and stops Bluetooth samples from
- * being used; SIM OFF returns to the real unit. Repeat it to keep the data
- * fresh, or stop to watch the stale rule take effect. */
+/* SIM <ac_in_mv> <soc> [in_watts] injects one sample and stops Bluetooth
+ * samples from being used; SIM OFF returns to the real unit. Input power
+ * defaults to 100 W when the voltage is non-zero; give 0 to reproduce a real
+ * outage, where the voltage reading stays put and the power stops. Repeat the
+ * command to keep the data fresh, or stop to watch the stale rule. */
 static size_t simulate(const char *args, char *out, size_t cap)
 {
-    char *end;
-    unsigned long mv = strtoul(args, &end, 10);
-    unsigned long soc = strtoul(end, NULL, 10);
+    char *p, *q;
+    unsigned long mv = strtoul(args, &p, 10);
+    bool off = p == args; /* no number at all: SIM OFF */
+    unsigned long soc = strtoul(p, &q, 10);
+    unsigned long watts = strtoul(q, &p, 10);
+    if (p == q) {
+        watts = mv ? 100 : 0; /* no third number */
+    }
     xSemaphoreTake(s_lock, portMAX_DELAY);
-    if (end == args) {
+    if (off) {
         s_simulating = false;
         power_state_init(&s_state);
     } else {
+        const power_sample_t sample = {
+            .ac_in_mv = mv,
+            .ac_in_ma = watts ? 1000 : 0,
+            .in_watts = (uint16_t)watts,
+            .ac_out_mv = CONFIG_CANARY_RATED_VOLTS * 1000u,
+            .ac_in_hz = CONFIG_CANARY_RATED_HZ,
+        };
         s_simulating = true;
-        power_state_set_ac(&s_state, &CFG, now_ms(), mv, CONFIG_CANARY_RATED_VOLTS * 1000u, 0,
-                           mv ? CONFIG_CANARY_RATED_HZ : 0);
+        power_state_set_ac(&s_state, &CFG, now_ms(), &sample);
         power_state_set_soc(&s_state, now_ms(), (uint8_t)(soc > 100 ? 100 : soc));
     }
     xSemaphoreGive(s_lock);

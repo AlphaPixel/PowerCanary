@@ -57,7 +57,7 @@ low.
 
 | NUT event                      | Meaning                                                                 |
 |--------------------------------|-------------------------------------------------------------------------|
-| On battery (`OB`)              | The power station has lost its AC input for longer than the debounce.   |
+| On battery (`OB`)              | The power station has drawn nothing from the wall for longer than the debounce. |
 | Low battery (`LB`)             | State of charge is at or below the threshold. It can appear on mains, while recharging. |
 | Communications lost            | The board has no fresh data: Bluetooth link down, power station's AC output off, or the board unplugged. |
 

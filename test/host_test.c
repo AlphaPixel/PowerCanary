@@ -23,28 +23,55 @@ static const power_cfg_t CFG = {
     .ac_present_min_mv = 50000, .debounce_ms = 10000, .stale_ms = 60000, .low_batt_pct = 30};
 static const megatec_rated_t RATED = {.volts = 120, .watts = 2400, .hz = 60};
 
+/* Mains present and mains lost as a real DELTA 2 Max reports them. When its AC
+ * cord is pulled the voltage reading stays where it was; only the input
+ * current and power drop to zero. */
+static const power_sample_t MAINS = {.ac_in_mv = 118437, .ac_in_ma = 1105, .in_watts = 116,
+                                     .ac_out_mv = 118109, .out_watts = 116, .ac_in_hz = 60};
+static const power_sample_t LOST = {.ac_in_mv = 118455, .ac_in_ma = 0, .in_watts = 0,
+                                    .ac_out_mv = 119456, .out_watts = 116, .ac_in_hz = 60};
+
+static void ac(power_state_t *s, int64_t now_ms, const power_sample_t *sample)
+{
+    power_state_set_ac(s, &CFG, now_ms, sample);
+}
+
 static void test_power_state(void)
 {
     power_state_t s;
     power_view_t v;
     power_state_init(&s);
 
+    /* What counts as mains present: a plausible voltage and power flowing in.
+     * A voltage reading with no current and no power is not evidence. */
+    power_sample_t x = MAINS;
+    CHECK(power_sample_ac_present(&CFG, &MAINS) && !power_sample_ac_present(&CFG, &LOST));
+    x.in_watts = 0;
+    CHECK(power_sample_ac_present(&CFG, &x)); /* current alone is enough */
+    x.ac_in_ma = 0;
+    CHECK(!power_sample_ac_present(&CFG, &x));
+    x = MAINS;
+    x.ac_in_mv = 49999;
+    CHECK(!power_sample_ac_present(&CFG, &x)); /* below the voltage floor */
+
     /* No data yet: nothing may be reported. */
     CHECK(!power_state_view(&s, &CFG, 0, &v));
     /* One of the two samples is not enough. */
-    power_state_set_ac(&s, &CFG, 1000, 120000, 120000, 240, 60);
+    ac(&s, 1000, &MAINS);
     CHECK(!power_state_view(&s, &CFG, 1000, &v));
     power_state_set_soc(&s, 1000, 80);
     CHECK(power_state_view(&s, &CFG, 1000, &v));
-    CHECK(!v.on_battery && !v.low_battery && v.soc == 80 && v.ac_in_mv == 120000);
+    CHECK(v.ac_present && !v.on_battery && !v.low_battery && v.soc == 80 && v.ac_in_mv == 118437);
 
-    /* Mains lost: still on line inside the debounce window, on battery after. */
-    power_state_set_ac(&s, &CFG, 2000, 0, 120000, 240, 0);
+    /* Mains lost with the voltage reading frozen: still on line inside the
+     * debounce window, on battery after. The input is shown as 0 V at once. */
+    ac(&s, 2000, &LOST);
     power_state_set_soc(&s, 2000, 80);
     CHECK(power_state_view(&s, &CFG, 2000, &v) && !v.on_battery);
-    power_state_set_ac(&s, &CFG, 11999, 0, 120000, 240, 0);
+    CHECK(!v.ac_present && v.ac_in_mv == 0 && v.ac_in_hz == 0 && v.ac_out_mv == 119456);
+    ac(&s, 11999, &LOST);
     CHECK(power_state_view(&s, &CFG, 11999, &v) && !v.on_battery);
-    power_state_set_ac(&s, &CFG, 12000, 0, 120000, 240, 0);
+    ac(&s, 12000, &LOST);
     CHECK(power_state_view(&s, &CFG, 12000, &v) && v.on_battery && !v.low_battery);
 
     /* Low battery at the threshold, not above it. */
@@ -59,22 +86,22 @@ static void test_power_state(void)
 
     /* A gap in samples does not restart the outage: still absent means still
      * on battery, with no second debounce. */
-    power_state_set_ac(&s, &CFG, 200000, 0, 120000, 240, 0);
+    ac(&s, 200000, &LOST);
     power_state_set_soc(&s, 200000, 29);
     CHECK(power_state_view(&s, &CFG, 200000, &v) && v.on_battery && v.low_battery);
 
     /* Mains back: on line at once; low battery stays true until recharged. */
-    power_state_set_ac(&s, &CFG, 201000, 119500, 120000, 240, 60);
-    CHECK(power_state_view(&s, &CFG, 201000, &v) && !v.on_battery && v.low_battery);
+    ac(&s, 201000, &MAINS);
+    CHECK(power_state_view(&s, &CFG, 201000, &v) && v.ac_present && !v.on_battery && v.low_battery);
 
     /* A brief dip shorter than the debounce never reports on battery. */
-    power_state_set_ac(&s, &CFG, 202000, 0, 120000, 240, 0);
-    power_state_set_ac(&s, &CFG, 205000, 120000, 120000, 240, 60);
-    power_state_set_ac(&s, &CFG, 206000, 0, 120000, 240, 0);
+    ac(&s, 202000, &LOST);
+    ac(&s, 205000, &MAINS);
+    ac(&s, 206000, &LOST);
     power_state_set_soc(&s, 215000, 29);
-    power_state_set_ac(&s, &CFG, 215000, 0, 120000, 240, 0);
+    ac(&s, 215000, &LOST);
     CHECK(power_state_view(&s, &CFG, 215000, &v) && !v.on_battery);
-    power_state_set_ac(&s, &CFG, 216000, 0, 120000, 240, 0);
+    ac(&s, 216000, &LOST);
     CHECK(power_state_view(&s, &CFG, 216000, &v) && v.on_battery);
 }
 
@@ -134,6 +161,24 @@ static void test_megatec(void)
         double charge = 100 * (col(out, 28, 31) - low) / (high - low);
         CHECK(charge > soc - 1.0 && charge < soc + 1.0);
     }
+}
+
+static size_t unhex(const char *hex, uint8_t *out)
+{
+    size_t n = 0;
+    for (; hex[0] && hex[1]; hex += 2) {
+        const char pair[3] = {hex[0], hex[1], '\0'};
+        out[n++] = (uint8_t)strtoul(pair, NULL, 16);
+    }
+    return n;
+}
+
+/* The firmware's path from a decoded heartbeat to the presence decision. */
+static bool present(const ef_inverter_t *iv)
+{
+    const power_sample_t sample = {.ac_in_mv = iv->ac_in_mv, .ac_in_ma = iv->ac_in_ma, .in_watts = iv->in_watts,
+                                   .ac_out_mv = iv->ac_out_mv, .out_watts = iv->out_watts, .ac_in_hz = iv->ac_in_hz};
+    return power_sample_ac_present(&CFG, &sample);
 }
 
 static void test_ef_proto(void)
@@ -200,7 +245,23 @@ static void test_ef_proto(void)
     ef_inverter_t iv;
     CHECK(ef_decode_inverter(inv, sizeof inv, &iv));
     CHECK(iv.out_watts == 312 && iv.ac_out_mv == 120010 && iv.ac_in_mv == 121340 && iv.ac_in_hz == 60);
+    CHECK(iv.in_watts == 0 && iv.ac_in_ma == 0);
     CHECK(!ef_decode_inverter(inv, 31, &iv));
+
+    /* Two inverter heartbeats captured from a real DELTA 2 Max: on mains, and
+     * a quarter of an hour after its AC cord was pulled. The voltage reading
+     * barely moves; input power and current are what show the outage. */
+    uint8_t real[40];
+    CHECK(unhex("000000005b000002ff74007400005dcd0100510400003ca5ce0100510400003c1e00000000000000", real) == 40);
+    CHECK(ef_decode_inverter(real, sizeof real, &iv));
+    CHECK(iv.in_watts == 116 && iv.ac_in_ma == 1105 && iv.ac_in_mv == 118437 && iv.ac_in_hz == 60);
+    CHECK(iv.out_watts == 116 && iv.ac_out_mv == 118109);
+    CHECK(present(&iv));
+    CHECK(unhex("000000005b000002000000740000a0d201006d0400003cb7ce0100000000003c2700000000000000", real) == 40);
+    CHECK(ef_decode_inverter(real, sizeof real, &iv));
+    CHECK(iv.in_watts == 0 && iv.ac_in_ma == 0 && iv.ac_in_mv == 118455 && iv.ac_in_hz == 60);
+    CHECK(iv.out_watts == 116 && iv.ac_out_mv == 119456);
+    CHECK(!present(&iv));
 
     /* EMS heartbeat: <BBBIIBBBB..., lcdShowSoc is the ninth field. */
     uint8_t ems[32] = {0}, soc = 0;
