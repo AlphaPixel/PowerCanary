@@ -5,8 +5,8 @@
 # Secrets: power-station serial number and account user ID
 secrets.h
 
-# ESP-IDF build output and generated config (sdkconfig.defaults is tracked)
-/build/
+# Build output and generated config (sdkconfig.defaults is tracked)
+/build*/
 /sdkconfig
 /sdkconfig.old
 /managed_components/
@@ -17,3 +17,6 @@ secrets.h
 *.swp
 Thumbs.db
 .DS_Store
+
+# Python
+__pycache__/

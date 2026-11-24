@@ -1,0 +1,73 @@
+menu "PowerCanary"
+
+    config CANARY_AC_PRESENT_MIN_V
+        int "AC input voltage that counts as mains present (V)"
+        default 50
+        range 1 300
+        help
+            The power station reports its AC input voltage. At or above this
+            value mains is considered present. The default suits both 120 V
+            and 230 V systems; confirm it with an unplug test.
+
+    config CANARY_DEBOUNCE_S
+        int "Seconds AC input must be absent before reporting on battery"
+        default 10
+        range 0 600
+
+    config CANARY_LOW_BATTERY_PCT
+        int "State of charge at or below which battery low is reported (%)"
+        default 30
+        range 1 99
+        help
+            The UPS driver treats on battery plus battery low as an immediate
+            shutdown.
+
+    config CANARY_STALE_S
+        int "Seconds without data before the status query goes unanswered"
+        default 60
+        range 5 600
+        help
+            With no fresh data the board does not answer the status query, so
+            the UPS driver reports the data as stale instead of trusting an
+            old status.
+
+    config CANARY_RATED_VOLTS
+        int "Nominal AC voltage reported to the host (V)"
+        default 120
+        range 100 240
+
+    config CANARY_RATED_WATTS
+        int "Rated AC output reported to the host (W)"
+        default 2400
+        help
+            Also the 100% point of the load figure.
+
+    config CANARY_RATED_HZ
+        int "Nominal AC frequency reported to the host (Hz)"
+        default 60
+        range 50 60
+
+    config CANARY_USB_RESET_DISABLE
+        bool "Stop the USB port's DTR/RTS lines from resetting the chip"
+        default y
+        help
+            A UPS driver opening or closing the serial port toggles DTR and
+            RTS, which the chip's USB serial controller can turn into a reset.
+            Each reset drops the Bluetooth session and leaves the host without
+            data for a while. With this on, flashing a board that is already
+            running this firmware needs the BOOT button. Turn it off only
+            while developing.
+
+    config CANARY_TEST_COMMANDS
+        bool "Accept the SIM and BOOT test commands on the serial port"
+        default n
+        help
+            SIM lets a tester inject AC input and state-of-charge samples in
+            place of the power station's, to exercise the on battery and
+            battery low paths without touching the power station. BOOT
+            restarts the chip into its download bootloader, so it can be
+            flashed without pressing a button. Anything able to write to the
+            serial port can then make the host shut down or take the board
+            offline: leave this off in the firmware you deploy.
+
+endmenu
