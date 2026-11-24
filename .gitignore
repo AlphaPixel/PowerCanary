@@ -1,0 +1,19 @@
+# Private site notes: internal hosts, addresses, access details. Never commit.
+*_Handoff.md
+/local/
+
+# Secrets: power-station serial number and account user ID
+secrets.h
+
+# ESP-IDF build output and generated config (sdkconfig.defaults is tracked)
+/build/
+/sdkconfig
+/sdkconfig.old
+/managed_components/
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+.DS_Store
