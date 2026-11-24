@@ -14,9 +14,11 @@ Nothing here is applied for you: enabling the UPS service is your decision.
   cu -l /dev/cuaU0 -s 2400
   ```
 
-  Type `Q1` and press Enter. A line starting with `(` and ending in eight
-  status digits means the board has fresh data from the power station. No
-  reply means it has none yet; `DBG` shows why. Leave `cu` with `~.`.
+  Type `I` and press Enter: the board answers with its identity line. FreeBSD
+  can drop the first reply after the port is opened, so if nothing comes
+  back, send it again. Then type `Q1`. A line starting with `(` and ending in
+  eight status digits means the board has fresh data from the power station.
+  No reply means it has none yet; `DBG` shows why. Leave `cu` with `~.`.
 
 ## Services → UPS
 
@@ -38,6 +40,10 @@ The driver entry only selects `nutdrv_qx`; the label after it is a list entry,
 not a model check. `protocol = megatec` skips the driver's protocol
 auto-detection. Leave `cablepower` at its default: the default control-line
 pattern is the one tested.
+
+The driver may take a second longer to start than you expect. FreeBSD can
+drop the board's first reply after the port is opened; the driver's first
+query then times out and it asks again. See the validation log.
 
 ### How the two shutdown modes behave
 

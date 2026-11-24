@@ -9,7 +9,9 @@ real outage.
 
 **Status: early development.** It logs in to a real DELTA 2 Max, and a real
 unplug of the power station shows up as `OB` in NUT 2.7.4 and clears again on
-replug. It has not yet run on the target host. See
+replug. On the target host, TrueNAS CORE 13.0, an outage drill ran through
+the UPS service to a clean shutdown after ten minutes on battery, and the
+service came back by itself on restart. See
 [docs/VALIDATION.md](docs/VALIDATION.md).
 
 ## Why
